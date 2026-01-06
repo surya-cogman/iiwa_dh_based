@@ -70,10 +70,13 @@ class DhParam(Node):
         dh = np.array(dh)
         r, c = dh.shape
 
+        self.T_all = []
         T = np.eye(4)
         for i in range(r):
             T = T @ t_matrix(a=dh[i][0], alpha=dh[i][1],
                              d=dh[i][2], theta=dh[i][3])
+
+            self.T_all.append(T)
 
         self.Tbase_ee = T
 
