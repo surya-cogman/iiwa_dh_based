@@ -14,13 +14,13 @@ class FourthJoint(Node):
     def __init__(self):
         super().__init__("fourth_joint")
 
-        # storing actual_joints
+        # ---------storing actual_joints ------------------------
         self.subscriber_ = self.create_subscription(
             JointState, '/joint_states', self.cb_joint_sub, 10)
 
         self.my_joints = ['joint1', 'joint2', 'joint3',
                           'joint4', 'joint5', 'joint6', 'joint7']
-        self.joint_states = []
+        self.q_act = []
         self.joint_index = {}
         self.joint_index_initializer = False
 
@@ -36,16 +36,17 @@ class FourthJoint(Node):
                              self.L[1]+self.L[2]+self.L[3]],
                             [0.0, 0.0, 0.0, 1.0]])
 
-        self.T2 = np.array([[0.0, 0.0, 1.0, (self.L[3])],
+        self.M = self.T1
+
+        self.T2 = np.array([[0.0, 0.0, 1.0, (self.L[3] + self.L[2])],
                             [0.0, 1.0, 0.0, 0.0],
-                            [-1.0, 0.0, 0.0, self.L[0] + self.L[1] + self.L[2]],
+                            [-1.0, 0.0, 0.0, self.L[0] + self.L[1]],
                             [0.0, 0.0, 0.0, 1.0]])
 
-        self.T3 = np.array([[0.0, 1.0, 0.0, 0.0],
-                            [-1.0, 0.0, 0.0, 0.0],
-                            [0.0, 0.0, 1.0, self.L[0] +
-                             self.L[1]+self.L[2]+self.L[3]],
-                            [0.0, 0.0, 0.0, 1.0]])
+        self.T3 = np.array([[0, 1, 0, 0],
+                            [-1, 0, 0, 0],
+                            [0, 0, 1, sum(self.L)],
+                            [0, 0, 0, 1]])
 
         # time variables
 
@@ -55,7 +56,7 @@ class FourthJoint(Node):
 
         # initializing parameters
 
-        self.T_prev = None
+        self.T_des_prev = None
         self.q_prev = None
         self.q_history = []
         self.time_history = []
@@ -93,7 +94,7 @@ class FourthJoint(Node):
             idx = self.joint_index[joint_name]
             theta.append(msg.position[idx])
 
-        self.joint_states = np.array(theta)
+        self.q_act = np.array(theta)
 
     def space_screw(self):
         """
@@ -170,17 +171,17 @@ class FourthJoint(Node):
         :rtype: _type_
         """
 
-        if self.T_prev is None:
-            self.T_prev = self.T_des
+        if self.T_des_prev is None:
+            self.T_des_prev = self.T_des
             return np.zeros(6)
 
-        # delta_T = np.linalg.inv(self.T_prev)@self.T_des
-        delta_T = self.T_des@np.linalg.inv(self.T_prev)
+        # delta_T = np.linalg.inv(self.T_des_prev)@self.T_des
+        delta_T = self.T_des@np.linalg.inv(self.T_des_prev)
 
         twist = (1/self.dt) * \
             helper_fns.se3ToVec(helper_fns.MatrixLog6(delta_T))
 
-        self.T_prev = self.T_des
+        self.T_des_prev = self.T_des
 
         return twist
 
@@ -191,24 +192,25 @@ class FourthJoint(Node):
 
         self.t += self.dt
 
+        # Generating desired trajectory
         self.T_des = self.trajectory_generator(
             self.T1, self.T2, self.t, self.total_time, "5")
 
-        if len(self.joint_states) == 0:
+        if len(self.q_act) == 0:
             return None
 
         if self.q_prev is None:
-            self.q_prev = self.joint_states
+            self.q_prev = self.q_act
 
         self.V_des = self.twist_generator()
 
-        Jac = helper_fns.JacobianSpace(self.screw_list, self.q_prev)
+        Jac = helper_fns.JacobianSpace(self.screw_list, self.q_act)
 
         jac_trans = Jac.transpose()
 
         pse_jac = np.linalg.inv((jac_trans@Jac + 0.001*np.eye(7)))@jac_trans
 
-        q_dot = pse_jac@self.V_des
+        q_dot = pse_jac @ self.V_des
 
         q_cmd = self.q_prev + self.dt * q_dot
         self.q_prev = q_cmd
@@ -216,6 +218,9 @@ class FourthJoint(Node):
         return q_cmd
 
     def plot_results(self):
+        """
+        _summary_
+        """
 
         q_hist = np.array(self.q_history)
         t_hist = np.array(self.time_history)

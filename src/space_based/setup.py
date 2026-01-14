@@ -26,6 +26,8 @@ setup(
         'console_scripts': [
             'space_param = space_based.space_param:main',
             'fourth_joint = space_based.fourth_joint:main',
+            'clik_controller = space_based.clik_controller:main',
+            'controller = space_based.controller:main',
         ],
     },
 )
